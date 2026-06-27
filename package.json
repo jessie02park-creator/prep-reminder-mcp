@@ -1,0 +1,22 @@
+{
+  "name": "prep-reminder-mcp",
+  "version": "1.0.0",
+  "description": "외출 준비 알림 MCP 서버 - 날씨/대기질 기반으로 출발 전 챙길 것을 카톡으로 알려줌",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "scheduler": "node src/scheduler.js",
+    "test:conditions": "node src/test-conditions.js",
+    "test:curation": "node src/test-curation.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^4.19.0",
+    "node-cron": "^3.0.3",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0"
+  },
+  "license": "ISC"
+}
