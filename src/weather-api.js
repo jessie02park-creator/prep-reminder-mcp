@@ -26,8 +26,6 @@ export const LOCATION_GRID = {
   "서울_중구": { nx: 60, ny: 127, airStation: "중구" },
   "서울_강남구": { nx: 61, ny: 126, airStation: "강남구" },
   "서울_서대문구": { nx: 59, ny: 127, airStation: "서대문구" },
-  "집_역삼로306": { nx: 61, ny: 125, airStation: "강남구" },
-  "학교_연세대": { nx: 59, ny: 127, airStation: "서대문구" },
   // TODO: 필요한 동네 추가
 };
 

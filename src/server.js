@@ -32,7 +32,7 @@ const server = new Server(
 const TOOLS = [
   {
     name: "register_user_schedule",
-    description: "사용자의 출발 시각과 동네를 등록하거나 수정합니다. 외출 준비 알림을 받기 위한 첫 설정입니다. 등록하면 매일 정해진 시각에 하루 전체(출발시간부터 활동종료시간까지) 일정을 스캔해서, 비/미세먼지/자외선이 예상되는 시간대를 미리 알려줍니다.",
+    description: "날씨 외출 준비 알림(PrepReminder) 서비스: 사용자의 출발 시각과 동네를 등록하거나 수정합니다. 외출 준비 알림을 받기 위한 첫 설정입니다. 등록하면 매일 정해진 시각에 하루 전체(출발시간부터 활동종료시간까지) 일정을 스캔해서, 비/미세먼지/자외선이 예상되는 시간대를 미리 알려줍니다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -65,7 +65,7 @@ const TOOLS = [
   },
   {
     name: "check_today_conditions",
-    description: "등록된 사용자의 오늘 출발 시각 기준 날씨/대기질 조건을 조회하고, 챙겨야 할 것을 알려줍니다.",
+    description: "날씨 외출 준비 알림(PrepReminder) 서비스: 등록된 사용자의 오늘 출발 시각 기준 날씨/대기질 조건을 조회하고, 챙겨야 할 것을 알려줍니다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -83,7 +83,7 @@ const TOOLS = [
   },
   {
     name: "send_prep_reminder",
-    description: "오늘의 조건을 평가해서 카카오톡으로 외출 준비 알림 메시지를 즉시 발송합니다.",
+    description: "날씨 외출 준비 알림(PrepReminder) 서비스: 오늘의 조건을 평가해서 카카오톡으로 외출 준비 알림 메시지를 즉시 발송합니다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -101,7 +101,7 @@ const TOOLS = [
   },
   {
     name: "recommend_meetup_spot",
-    description: "약속 장소와 날짜/시간을 알려주면, 그날 날씨를 확인하고 주변의 카페/음식점/공원 등을 날씨에 맞게 추천합니다. 예: '토요일 3시 삼성역에서 만나는데 추천해줄 곳 있어?'",
+    description: "날씨 외출 준비 알림(PrepReminder) 서비스: 약속 장소와 날짜/시간을 알려주면, 그날 날씨를 확인하고 주변의 카페/음식점/공원 등을 날씨에 맞게 추천합니다. 예: '토요일 3시 삼성역에서 만나는데 추천해줄 곳 있어?'",
     inputSchema: {
       type: "object",
       properties: {
@@ -128,7 +128,7 @@ const TOOLS = [
   },
   {
     name: "register_activity_schedule",
-    description: "매일/매주 반복되는 정기적 야외 활동(러닝, 등산, 자전거, 산책 등) 시간대를 등록합니다. 등록하면 매일 그 시간에 활동하기 적합한 날씨인지 자동으로 알려줍니다. 골프/테니스/피크닉처럼 매번 날짜가 바뀌는 약속형 활동은 이 도구로 등록하지 말고, 그때그때 'OO일에 골프 괜찮을까?' 식으로 물어보면 됩니다 (check_activity_condition에 날짜를 지정해서 사용).",
+    description: "날씨 외출 준비 알림(PrepReminder) 서비스: 매일/매주 반복되는 정기적 야외 활동(러닝, 등산, 자전거, 산책 등) 시간대를 등록합니다. 등록하면 매일 그 시간에 활동하기 적합한 날씨인지 자동으로 알려줍니다. 골프/테니스/피크닉처럼 매번 날짜가 바뀌는 약속형 활동은 이 도구로 등록하지 말고, 그때그때 'OO일에 골프 괜찮을까?' 식으로 물어보면 됩니다 (check_activity_condition에 날짜를 지정해서 사용).",
     inputSchema: {
       type: "object",
       properties: {
@@ -152,7 +152,7 @@ const TOOLS = [
   },
   {
     name: "check_activity_condition",
-    description: "등록된 야외 활동 시간대의 날씨 적합도를 확인합니다. '오늘 러닝 가도 될까?' 같은 질문에 답할 때 사용합니다.",
+    description: "날씨 외출 준비 알림(PrepReminder) 서비스: 등록된 야외 활동 시간대의 날씨 적합도를 확인합니다. '오늘 러닝 가도 될까?' 같은 질문에 답할 때 사용합니다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -170,7 +170,7 @@ const TOOLS = [
   },
   {
     name: "check_forecast_changes",
-    description: "아침에 발송했던 예보와 지금의 최신 예보를 비교해서, 강수확률 등이 크게(30%p 이상) 바뀐 시간대가 있으면 변경 알림을 발송합니다. notify_on_change를 켠 사용자에게 주기적으로 호출하는 용도입니다.",
+    description: "날씨 외출 준비 알림(PrepReminder) 서비스: 아침에 발송했던 예보와 지금의 최신 예보를 비교해서, 강수확률 등이 크게(30%p 이상) 바뀐 시간대가 있으면 변경 알림을 발송합니다. notify_on_change를 켠 사용자에게 주기적으로 호출하는 용도입니다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -503,6 +503,25 @@ app.post("/mcp", async (req, res) => {
       });
     }
   }
+});
+
+// stateless 서버는 서버→클라이언트 알림(SSE)을 위한 GET/DELETE를 지원하지 않음.
+// 클라이언트가 시도하면 명확하게 405로 알려줌 (404로 두면 "엔드포인트가 없다"는
+// 의미로 오해될 수 있어서, "이 메서드는 지원 안 함"이라는 의도를 분명히 함).
+app.get("/mcp", (req, res) => {
+  res.status(405).json({
+    jsonrpc: "2.0",
+    error: { code: -32000, message: "Method Not Allowed: this server is stateless and does not support SSE streams." },
+    id: null
+  });
+});
+
+app.delete("/mcp", (req, res) => {
+  res.status(405).json({
+    jsonrpc: "2.0",
+    error: { code: -32000, message: "Method Not Allowed: this server is stateless and has no sessions to delete." },
+    id: null
+  });
 });
 
 // 헬스체크용 (배포 환경에서 서버 살아있는지 확인용, MCP 프로토콜과 무관)
