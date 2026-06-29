@@ -189,7 +189,7 @@ const TOOLS = [
   },
   {
     name: "recommend_outing_day",
-    description: "날씨 외출 준비 알림 (PrepReminder) 서비스: 앞으로 일주일(4~10일 후) 중 나들이/한강/워터파크 등 외출하기 좋은 날을 추천합니다. 단기예보보다 정밀도는 낮은 참고용 정보예요(오전/오후 단위, 미세먼지·자외선 정보 없음). 예: '이번주 한강 가기 좋은 날 언제야?'",
+    description: "날씨 외출 준비 알림 (PrepReminder) 서비스: 앞으로 일주일(4~10일 후) 중 나들이/한강/워터파크는 물론 골프, 등산, 낚시 등 특정 야외활동까지 하기 좋은 날을 추천합니다. 단기예보보다 정밀도는 낮은 참고용 정보예요(오전/오후 단위, 미세먼지·자외선·풍속 정보 없음). 예: '이번주 한강 가기 좋은 날 언제야?', '이번주 골프 치기 좋은 날 있어?'",
     inputSchema: {
       type: "object",
       properties: {
@@ -198,6 +198,10 @@ const TOOLS = [
           description: "도시명",
           enum: ["서울", "인천", "경기"],
           default: "서울"
+        },
+        activity_type: {
+          type: "string",
+          description: "특정 야외활동 종류 (예: 골프, 등산, 러닝, 자전거, 피크닉, 산책, 테니스, 서핑, 낚시 또는 자유 입력). 비워두면 일반적인 나들이 기준으로 추천합니다."
         }
       },
       required: []
@@ -351,11 +355,11 @@ async function handleCheckForecastChanges(args) {
 }
 
 async function handleRecommendOutingDay(args) {
-  const { city = "서울" } = args;
+  const { city = "서울", activity_type = null } = args;
 
   try {
     const weeklyData = await getWeeklyOutlook(city);
-    const message = buildWeeklyOutingMessage(weeklyData, "");
+    const message = buildWeeklyOutingMessage(weeklyData, "", activity_type);
     return { content: [{ type: "text", text: message }] };
   } catch (err) {
     return {

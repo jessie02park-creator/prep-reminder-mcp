@@ -409,32 +409,43 @@ export function evaluateRunningCondition(data) {
 }
 
 /**
- * 1주일치 중기예보 데이터를 받아서, 나들이하기 좋은 날을 추천하는 메시지를 만듦.
- * 단기예보처럼 정밀하지 않고(오전/오후 단위, 미세먼지/자외선 정보 없음),
- * "비 안 오고 너무 덥거나 춥지 않은 날"만 단순하게 골라줌.
+ * 1주일치 중기예보 데이터를 받아서, 나들이/특정 야외활동 하기 좋은 날을 추천하는 메시지를 만듦.
+ * 단기예보처럼 정밀하지 않고(오전/오후 단위, 미세먼지/자외선/풍속 정보 없음),
+ * "비/기온" 기준으로만 판단함. activityType을 주면 ACTIVITY_PROFILES의 비/더위 민감도를 반영해서
+ * 종목별로 다른 기준을 적용함 (예: 골프는 비에 더 엄격하게).
  *
  * @param {Array} weeklyData - weather-midterm.js의 getWeeklyOutlook() 결과
  * @param {string} userName
+ * @param {string} [activityType] - ACTIVITY_PROFILES의 키 (예: "골프", "등산"). 없으면 일반 나들이 기준.
  * @returns {string} 최종 메시지
  */
-export function buildWeeklyOutingMessage(weeklyData, userName = "") {
+export function buildWeeklyOutingMessage(weeklyData, userName = "", activityType = null) {
   const greeting = userName ? `${userName}님, ` : "";
+  const profile = activityType ? (ACTIVITY_PROFILES[activityType] ?? null) : null;
+  const label = profile ? profile.label : "나들이";
+
+  // 종목별 비 민감도에 따라 기준치 조정 (impossible은 더 엄격하게)
+  const rainThresholds = profile?.rainSensitivity === "impossible"
+    ? { warn: 30, bad: 50 }
+    : { warn: 30, bad: 60 };
+
+  const heatLimit = profile?.heatSensitivity === "high" ? 31 : 33;
 
   const evaluated = weeklyData.map(day => {
     let level = "좋음";
     const reasons = [];
 
-    if (day.rainProbability >= 60) {
+    if (day.rainProbability >= rainThresholds.bad) {
       level = "별로";
       reasons.push(`비 올 확률 ${day.rainProbability}%`);
-    } else if (day.rainProbability >= 30) {
+    } else if (day.rainProbability >= rainThresholds.warn) {
       level = "보통";
       reasons.push(`비 올 확률 ${day.rainProbability}%`);
     }
 
-    if (day.tempMax >= 33 || day.tempMin <= 0) {
+    if (day.tempMax >= heatLimit || day.tempMin <= 0) {
       if (level === "좋음") level = "보통";
-      reasons.push(day.tempMax >= 33 ? `최고 ${day.tempMax}도` : `최저 ${day.tempMin}도`);
+      reasons.push(day.tempMax >= heatLimit ? `최고 ${day.tempMax}도` : `최저 ${day.tempMin}도`);
     }
 
     return { ...day, level, reasons };
@@ -450,12 +461,12 @@ export function buildWeeklyOutingMessage(weeklyData, userName = "") {
   let recommendation;
   if (best.length > 0) {
     const bestDay = best[0];
-    recommendation = `${bestDay.date}이 제일 좋아 보여요! 나들이하기 좋은 날씨예요.`;
+    recommendation = `${bestDay.date}이 제일 좋아 보여요! ${label}하기 좋은 날씨예요.`;
   } else {
-    recommendation = "이번 주는 나들이하기 딱 좋은 날이 적어요. 비교적 나은 날을 골라서 가시는 게 좋겠어요.";
+    recommendation = `이번 주는 ${label}하기 딱 좋은 날이 적어요. 비교적 나은 날을 골라서 가시는 게 좋겠어요.`;
   }
 
-  return `${greeting}앞으로 일주일 날씨를 살펴봤어요. (※ 단기예보보다 정밀도가 낮은 참고용 정보예요)\n\n${lines.join("\n")}\n\n${recommendation}`;
+  return `${greeting}앞으로 일주일 ${label} 날씨를 살펴봤어요. (※ 단기예보보다 정밀도가 낮은 참고용 정보예요)\n\n${lines.join("\n")}\n\n${recommendation}`;
 }
 
 /**
