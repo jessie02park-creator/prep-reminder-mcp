@@ -13,8 +13,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
 
-import { evaluateConditions, buildMessage, buildDayMessage, calculateNotifyTime, evaluateOutdoorActivity, detectForecastChanges } from "./conditions.js";
+import { evaluateConditions, buildMessage, buildDayMessage, calculateNotifyTime, evaluateOutdoorActivity, detectForecastChanges, buildWeeklyOutingMessage } from "./conditions.js";
 import { getConditionData, getDayConditionData } from "./weather-api.js";
+import { getWeeklyOutlook } from "./weather-midterm.js";
 import { getUser, upsertUser, getYesterdayTemperature, saveTodayTemperature, saveSentForecast, getSentForecast } from "./store.js";
 import { sendKakaoMessage } from "./kakao-message.js";
 import { resolveToCoordinates, searchNearbyPlaces } from "./kakao-map.js";
@@ -185,6 +186,29 @@ const TOOLS = [
       idempotentHint: false,
       openWorldHint: true
     }
+  },
+  {
+    name: "recommend_outing_day",
+    description: "날씨 외출 준비 알림 (PrepReminder) 서비스: 앞으로 일주일(4~10일 후) 중 나들이/한강/워터파크 등 외출하기 좋은 날을 추천합니다. 단기예보보다 정밀도는 낮은 참고용 정보예요(오전/오후 단위, 미세먼지·자외선 정보 없음). 예: '이번주 한강 가기 좋은 날 언제야?'",
+    inputSchema: {
+      type: "object",
+      properties: {
+        city: {
+          type: "string",
+          description: "도시명",
+          enum: ["서울", "인천", "경기"],
+          default: "서울"
+        }
+      },
+      required: []
+    },
+    annotations: {
+      title: "Recommend Best Outing Day This Week",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
+    }
   }
 ];
 
@@ -209,6 +233,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleCheckActivityCondition(args);
       case "check_forecast_changes":
         return await handleCheckForecastChanges(args);
+      case "recommend_outing_day":
+        return await handleRecommendOutingDay(args);
       default:
         throw new Error(`알 수 없는 도구: ${name}`);
     }
@@ -322,6 +348,21 @@ async function handleCheckForecastChanges(args) {
   saveSentForecast(user.location_key, targetDate, newSlots);
 
   return { content: [{ type: "text", text: `변경 알림 발송: ${changeMessage}` }] };
+}
+
+async function handleRecommendOutingDay(args) {
+  const { city = "서울" } = args;
+
+  try {
+    const weeklyData = await getWeeklyOutlook(city);
+    const message = buildWeeklyOutingMessage(weeklyData, "");
+    return { content: [{ type: "text", text: message }] };
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `1주일 예보를 가져오지 못했어요: ${err.message}` }],
+      isError: true
+    };
+  }
 }
 
 // ---- 공통 로직 ----

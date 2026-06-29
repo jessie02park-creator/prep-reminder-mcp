@@ -409,6 +409,56 @@ export function evaluateRunningCondition(data) {
 }
 
 /**
+ * 1주일치 중기예보 데이터를 받아서, 나들이하기 좋은 날을 추천하는 메시지를 만듦.
+ * 단기예보처럼 정밀하지 않고(오전/오후 단위, 미세먼지/자외선 정보 없음),
+ * "비 안 오고 너무 덥거나 춥지 않은 날"만 단순하게 골라줌.
+ *
+ * @param {Array} weeklyData - weather-midterm.js의 getWeeklyOutlook() 결과
+ * @param {string} userName
+ * @returns {string} 최종 메시지
+ */
+export function buildWeeklyOutingMessage(weeklyData, userName = "") {
+  const greeting = userName ? `${userName}님, ` : "";
+
+  const evaluated = weeklyData.map(day => {
+    let level = "좋음";
+    const reasons = [];
+
+    if (day.rainProbability >= 60) {
+      level = "별로";
+      reasons.push(`비 올 확률 ${day.rainProbability}%`);
+    } else if (day.rainProbability >= 30) {
+      level = "보통";
+      reasons.push(`비 올 확률 ${day.rainProbability}%`);
+    }
+
+    if (day.tempMax >= 33 || day.tempMin <= 0) {
+      if (level === "좋음") level = "보통";
+      reasons.push(day.tempMax >= 33 ? `최고 ${day.tempMax}도` : `최저 ${day.tempMin}도`);
+    }
+
+    return { ...day, level, reasons };
+  });
+
+  const best = evaluated.filter(d => d.level === "좋음");
+  const lines = evaluated.map(d => {
+    const icon = d.level === "좋음" ? "✅" : d.level === "보통" ? "△" : "❌";
+    const reasonText = d.reasons.length > 0 ? ` (${d.reasons.join(", ")})` : "";
+    return `${d.date} (${d.daysFromNow}일 후): ${d.weatherText}, ${d.tempMin}~${d.tempMax}도 ${icon}${reasonText}`;
+  });
+
+  let recommendation;
+  if (best.length > 0) {
+    const bestDay = best[0];
+    recommendation = `${bestDay.date}이 제일 좋아 보여요! 나들이하기 좋은 날씨예요.`;
+  } else {
+    recommendation = "이번 주는 나들이하기 딱 좋은 날이 적어요. 비교적 나은 날을 골라서 가시는 게 좋겠어요.";
+  }
+
+  return `${greeting}앞으로 일주일 날씨를 살펴봤어요. (※ 단기예보보다 정밀도가 낮은 참고용 정보예요)\n\n${lines.join("\n")}\n\n${recommendation}`;
+}
+
+/**
  * 이전에 발송한 시간대별 예보(oldSlots)와 새로 조회한 예보(newSlots)를 비교해서,
  * "크게 바뀐" 시간대만 골라 변경 알림 메시지를 만듦.
  * 작은 변동(예: 강수확률 5%p 변화)은 무시하고, 의미 있는 변화만 알림.
