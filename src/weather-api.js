@@ -26,9 +26,11 @@ export const LOCATION_GRID = {
   "서울_중구": { nx: 60, ny: 127, airStation: "중구" },
   "서울_강남구": { nx: 61, ny: 126, airStation: "강남구" },
   "서울_서대문구": { nx: 59, ny: 127, airStation: "서대문구" },
+  "집_역삼로306": { nx: 61, ny: 125, airStation: "강남구" },
+  "학교_연세대": { nx: 59, ny: 127, airStation: "서대문구" },
   // TODO: 필요한 동네 추가
 };
-
+  
 /**
  * 기상청 base_time은 3시간 간격(02,05,08,11,14,17,20,23)으로만 발표됨.
  * 현재 시각 기준으로 가장 최근 발표시각을 계산.

@@ -31,18 +31,22 @@ export async function sendKakaoMessage(userId, text) {
     }
   };
 
-  const res = await axios.post(
-    KAKAO_MEMO_SEND_URL,
-    new URLSearchParams({ template_object: JSON.stringify(templateObject) }),
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
+  try {
+    const res = await axios.post(
+      KAKAO_MEMO_SEND_URL,
+      new URLSearchParams({ template_object: JSON.stringify(templateObject) }),
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
+        }
       }
-    }
-  );
-
-  return res.data;
+    );
+    return res.data;
+  } catch (error) {
+    console.error("카카오 메시지 발송 실패:", JSON.stringify(error.response?.data));
+    throw error;
+  }
 }
 
 /**
