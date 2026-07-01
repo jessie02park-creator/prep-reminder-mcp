@@ -1,36 +1,43 @@
 // src/weather-api.js
-// 기상청 단기예보 API + 에어코리아 대기질 API를 호출해서
+// 기상청 단기예보 API + 에어코리아 대기질 API + 생활기상지수(자외선) API를 호출해서
 // conditions.js가 바로 쓸 수 있는 정규화된 형태로 변환한다.
 //
 // 필요한 .env 값:
 //   KMA_SERVICE_KEY=공공데이터포털에서 발급받은 인증키 (decoding 버전)
 //   AIRKOREA_SERVICE_KEY=에어코리아 대기오염정보 인증키
+//   UV_SERVICE_KEY=기상청 생활기상지수 조회서비스 인증키 (자외선지수용)
 //
 // 참고: 공공데이터포털(data.go.kr)에서
 //   - "기상청_단기예보 조회서비스" 활용신청
 //   - "한국환경공단_에어코리아_대기오염정보" 활용신청
-// 두 개 다 신청해야 함 (보통 신청 즉시 또는 1일 내 승인)
+//   - "기상청_생활기상지수 조회서비스" 활용신청
+// 세 개 다 신청해야 함 (보통 신청 즉시 또는 1일 내 승인)
 
 import axios from "axios";
 
 const KMA_BASE_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst";
 const AIRKOREA_BASE_URL = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty";
+const UV_BASE_URL = "https://apis.data.go.kr/1360000/LivingWthrIdxServiceV5/getUVIdxV5";
 
 /**
  * 기상청 격자좌표(nx, ny)는 위경도가 아니라 기상청 고유 좌표계.
  * 동 단위로 미리 매핑해두고 사용자가 "동네"를 선택하면 이 테이블에서 찾는 방식 추천.
  * 전체 좌표는 기상청에서 제공하는 "기상청41_단기예보 조회서비스_오픈API활용가이드"의
  * 별첨 엑셀(법정동코드 매핑표)을 참고해서 채워넣으면 됨.
+ *
+ * uvAreaNo: 생활기상지수(자외선지수) API 전용 지역코드. nx/ny와 별개 체계.
+ * 서울 지역은 우선 공통값("1100000000", 서울특별시 단위)으로 사용.
+ * 더 세분화된 구 단위 코드가 필요하면 첨부 지역코드 엑셀 참고.
  */
 export const LOCATION_GRID = {
-  "서울_중구": { nx: 60, ny: 127, airStation: "중구" },
-  "서울_강남구": { nx: 61, ny: 126, airStation: "강남구" },
-  "서울_서대문구": { nx: 59, ny: 127, airStation: "서대문구" },
-  "집_역삼로306": { nx: 61, ny: 125, airStation: "강남구" },
-  "학교_연세대": { nx: 59, ny: 127, airStation: "서대문구" },
+  "서울_중구": { nx: 60, ny: 127, airStation: "중구", uvAreaNo: "1100000000" },
+  "서울_강남구": { nx: 61, ny: 126, airStation: "강남구", uvAreaNo: "1100000000" },
+  "서울_서대문구": { nx: 59, ny: 127, airStation: "서대문구", uvAreaNo: "1100000000" },
+  "집_역삼로306": { nx: 61, ny: 125, airStation: "강남구", uvAreaNo: "1100000000" },
+  "학교_연세대": { nx: 59, ny: 127, airStation: "서대문구", uvAreaNo: "1100000000" },
   // TODO: 필요한 동네 추가
 };
-  
+
 /**
  * 기상청 base_time은 3시간 간격(02,05,08,11,14,17,20,23)으로만 발표됨.
  * 현재 시각 기준으로 가장 최근 발표시각을 계산.
@@ -45,12 +52,10 @@ function getLatestBaseDateTime(now = new Date()) {
   const kstHour = now.getHours();
   const kstMinute = now.getMinutes();
 
-  // 발표 후 30분 이상 지난 시각만 "확정"으로 보고 후보에 포함
   let candidates = baseTimes.filter(h => h < kstHour || (h === kstHour && kstMinute >= 30));
   let baseDate = now;
 
   if (candidates.length === 0) {
-    // 오늘 발표분이 아직 없으면(또는 직전 30분 이내) 전날 마지막 발표(23시)분을 사용
     baseDate = new Date(now);
     baseDate.setDate(baseDate.getDate() - 1);
     candidates = [23];
@@ -67,9 +72,6 @@ function getLatestBaseDateTime(now = new Date()) {
   };
 }
 
-/**
- * 기상청 단기예보 호출 → 오늘 특정 시각(targetHour)의 기온/강수확률/강수형태/SKY 추출
- */
 async function fetchKmaForecast(nx, ny, targetDate, targetHour) {
   const { base_date, base_time } = getLatestBaseDateTime();
 
@@ -88,8 +90,6 @@ async function fetchKmaForecast(nx, ny, targetDate, targetHour) {
   });
 
   const items = res.data?.response?.body?.items?.item ?? [];
-
-  // 목표 시각(예: 출발 40분 전 시각이 속한 시간대)의 데이터만 필터링
   const targetFcstTime = `${String(targetHour).padStart(2, "0")}00`;
   const matched = items.filter(
     it => it.fcstDate === targetDate && it.fcstTime === targetFcstTime
@@ -101,25 +101,14 @@ async function fetchKmaForecast(nx, ny, targetDate, targetHour) {
   };
 
   return {
-    temperature: parseFloat(getValue("TMP")),       // 기온
-    precipitationProbability: parseInt(getValue("POP") ?? "0", 10), // 강수확률(%)
-    precipitationType: mapPrecipType(getValue("PTY")), // 강수형태코드 → 문자열
+    temperature: parseFloat(getValue("TMP")),
+    precipitationProbability: parseInt(getValue("POP") ?? "0", 10),
+    precipitationType: mapPrecipType(getValue("PTY")),
     skyCondition: getValue("SKY"),
-    windSpeed: parseFloat(getValue("WSD") ?? "0")    // 풍속(m/s)
+    windSpeed: parseFloat(getValue("WSD") ?? "0")
   };
 }
 
-/**
- * 기상청 단기예보 호출 → "오늘 하루 전체" 시간대별 기온/강수확률/강수형태를 한번에 추출.
- * API는 한 번 호출로 이미 하루~3일치 전체 시간대를 다 주기 때문에,
- * 그 응답을 그대로 시간대별로 묶어서 반환하면 됨 (추가 API 호출 없음).
- *
- * @param {number} nx, ny - 격자좌표
- * @param {string} targetDate - YYYYMMDD
- * @param {number} fromHour - 조회 시작 시각 (기본 6시)
- * @param {number} toHour - 조회 종료 시각 (기본 23시)
- * @returns {Promise<Array<{hour: number, temperature: number, precipitationProbability: number, precipitationType: string, skyCondition: string}>>}
- */
 export async function fetchKmaForecastAllDay(nx, ny, targetDate, fromHour = 6, toHour = 23) {
   const { base_date, base_time } = getLatestBaseDateTime();
 
@@ -144,7 +133,7 @@ export async function fetchKmaForecastAllDay(nx, ny, targetDate, fromHour = 6, t
   for (let hour = fromHour; hour <= toHour; hour++) {
     const fcstTime = `${String(hour).padStart(2, "0")}00`;
     const matched = todayItems.filter(it => it.fcstTime === fcstTime);
-    if (matched.length === 0) continue; // 해당 시간대 예보가 없으면 스킵 (예: 이미 지난 시간)
+    if (matched.length === 0) continue;
 
     const getValue = (category) => matched.find(it => it.category === category)?.fcstValue;
 
@@ -162,18 +151,14 @@ export async function fetchKmaForecastAllDay(nx, ny, targetDate, fromHour = 6, t
 }
 
 function mapPrecipType(code) {
-  // PTY: 없음(0), 비(1), 비/눈(2), 눈(3), 빗방울(5), 빗방울눈날림(6), 눈날림(7)
   switch (code) {
     case "1": case "5": return "rain";
-    case "2": case "6": return "rain"; // 비/눈 섞임도 우산 기준으로 처리
+    case "2": case "6": return "rain";
     case "3": case "7": return "snow";
     default: return "none";
   }
 }
 
-/**
- * 에어코리아 실시간 대기질 호출 → PM10, PM25 추출
- */
 async function fetchAirQuality(stationName) {
   const res = await axios.get(AIRKOREA_BASE_URL, {
     params: {
@@ -196,91 +181,159 @@ async function fetchAirQuality(stationName) {
 }
 
 /**
- * 자외선 지수는 기상청 "생활기상지수" API(별도 서비스)에서 가져올 수 있음.
- * 여기서는 일단 더미값을 반환하는 자리로 남겨두고, 실제 연동 시
- * UVIdxServiceV2 API를 동일한 패턴으로 추가하면 됨.
+ * 자외선지수 API의 발표시각 계산. 하루 2번(06시, 18시)만 발표됨.
  */
-async function fetchUvIndex(/* nx, ny */) {
-  // TODO: 기상청 생활기상지수 자외선지수 API 연동
-  // http://apis.data.go.kr/1360000/LivingWthrIdxServiceV4/getUVIdxV2
-  return null;
+function getLatestUvAnnounceDateTime(now = new Date()) {
+  const hour = now.getHours();
+  const announceDate = new Date(now);
+
+  let announceHour;
+  if (hour >= 18) {
+    announceHour = 18;
+  } else if (hour >= 6) {
+    announceHour = 6;
+  } else {
+    announceDate.setDate(announceDate.getDate() - 1);
+    announceHour = 18;
+  }
+
+  announceDate.setHours(announceHour, 0, 0, 0);
+  return announceDate;
 }
 
 /**
- * 메인 함수: 동네 키 + 목표 날짜/시각을 받아서
- * conditions.js의 evaluateConditions()가 바로 쓸 수 있는 형태로 반환
+ * 자외선지수 API 호출 (실제 응답 구조 확인됨: h0, h3, h6 ... h75 필드,
+ * 발표시각 기준 3시간 간격 오프셋. today/tomorrow 필드가 아님 — 문서와 실제 API 불일치 확인함).
+ * 실패 시 null 반환 → estimateUvFallback으로 자동 대체.
  */
+async function fetchUvSeries(areaNo) {
+  if (!areaNo) return null;
+
+  try {
+    const announceDate = getLatestUvAnnounceDateTime();
+    const yyyy = announceDate.getFullYear();
+    const mm = String(announceDate.getMonth() + 1).padStart(2, "0");
+    const dd = String(announceDate.getDate()).padStart(2, "0");
+    const hh = String(announceDate.getHours()).padStart(2, "0");
+    const time = `${yyyy}${mm}${dd}${hh}`;
+
+    const res = await axios.get(UV_BASE_URL, {
+      params: {
+        serviceKey: process.env.UV_SERVICE_KEY,
+        pageNo: 1,
+        numOfRows: 10,
+        dataType: "JSON",
+        areaNo,
+        time
+      },
+      timeout: 5000
+    });
+
+    const items = res.data?.response?.body?.items?.item ?? [];
+    if (items.length === 0) return null;
+
+    return { item: items[0], announceDate };
+  } catch (error) {
+    console.error("자외선 지수 조회 실패:", JSON.stringify(error.response?.data ?? error.message));
+    return null;
+  }
+}
+
+/**
+ * fetchUvSeries()로 받은 시리즈에서, 원하는 날짜/시각에 가장 가까운 3시간 구간 값을 뽑음.
+ */
+function pickUvValue(series, targetDate, targetHour) {
+  if (!series) return null;
+  const { item, announceDate } = series;
+
+  const y = parseInt(targetDate.slice(0, 4), 10);
+  const m = parseInt(targetDate.slice(4, 6), 10) - 1;
+  const d = parseInt(targetDate.slice(6, 8), 10);
+  const targetDateTime = new Date(y, m, d, targetHour, 0, 0, 0);
+
+  const diffHours = Math.round((targetDateTime - announceDate) / (60 * 60 * 1000));
+  if (diffHours < 0 || diffHours > 75) return null;
+
+  const rounded = Math.floor(diffHours / 3) * 3;
+  const raw = item[`h${rounded}`];
+  if (raw === undefined || raw === "") return null;
+
+  const value = parseInt(raw, 10);
+  return Number.isNaN(value) ? null : value;
+}
+
 export async function getConditionData(locationKey, { targetDate, targetHour, yesterdayTemperature }) {
   const location = LOCATION_GRID[locationKey];
   if (!location) {
     throw new Error(`알 수 없는 지역: ${locationKey}. LOCATION_GRID에 추가해주세요.`);
   }
 
-  const [forecast, air, uv] = await Promise.all([
+  const [forecast, air, uvSeries] = await Promise.all([
     fetchKmaForecast(location.nx, location.ny, targetDate, targetHour),
     fetchAirQuality(location.airStation),
-    fetchUvIndex(location.nx, location.ny)
+    fetchUvSeries(location.uvAreaNo)
   ]);
+
+  const uvValue = pickUvValue(uvSeries, targetDate, targetHour);
 
   return {
     temperature: forecast.temperature,
-    yesterdayTemperature, // 전날 같은 시각 값은 호출 측에서 캐시/DB로 관리해서 넘겨줌
+    yesterdayTemperature,
     precipitationProbability: forecast.precipitationProbability,
     precipitationType: forecast.precipitationType,
     pm10: air.pm10,
     pm25: air.pm25,
-    uvIndex: uv ?? estimateUvFallback(forecast.skyCondition),
+    uvIndex: uvValue ?? estimateUvFallback(forecast.skyCondition, targetHour, forecast.temperature),
     windSpeed: forecast.windSpeed
   };
 }
 
-/**
- * "하루 전체" 버전: 동네 키 + 날짜를 받아서, 활동시간대(기본 6시~23시) 전체의
- * 시간대별 데이터를 conditions.js의 buildDayMessage()가 바로 쓸 수 있는 형태로 반환.
- * 미세먼지/대기질은 시간대별로 세분화된 예보가 없어서(현재 실시간 측정값만 제공),
- * 하루 전체에 동일한 값을 적용함 — 이건 공공데이터 API 자체의 한계.
- */
 export async function getDayConditionData(locationKey, { targetDate, fromHour = 6, toHour = 23 }) {
   const location = LOCATION_GRID[locationKey];
   if (!location) {
     throw new Error(`알 수 없는 지역: ${locationKey}. LOCATION_GRID에 추가해주세요.`);
   }
 
-  const [hourlyForecasts, air] = await Promise.all([
+  const [hourlyForecasts, air, uvSeries] = await Promise.all([
     fetchKmaForecastAllDay(location.nx, location.ny, targetDate, fromHour, toHour),
-    fetchAirQuality(location.airStation)
+    fetchAirQuality(location.airStation),
+    fetchUvSeries(location.uvAreaNo)
   ]);
 
-  // 시간대별 기온 변화로 "전날 대비"는 생략(하루 안 구간 비교라 의미가 다름),
-  // 대신 그날 하루 안에서의 급격한 온도 변화는 conditions.js 쪽에서 필요시 별도 처리 가능.
-  return hourlyForecasts.map(slot => ({
-    hour: slot.hour,
-    data: {
-      temperature: slot.temperature,
-      yesterdayTemperature: undefined, // 시간대별 버전에서는 전날 비교 생략
-      precipitationProbability: slot.precipitationProbability,
-      precipitationType: slot.precipitationType,
-      pm10: air.pm10,
-      pm25: air.pm25,
-      uvIndex: estimateUvFallback(slot.skyCondition, slot.hour),
-      windSpeed: slot.windSpeed
-    }
-  }));
+  return hourlyForecasts.map(slot => {
+    const uvValue = pickUvValue(uvSeries, targetDate, slot.hour);
+    return {
+      hour: slot.hour,
+      data: {
+        temperature: slot.temperature,
+        yesterdayTemperature: undefined,
+        precipitationProbability: slot.precipitationProbability,
+        precipitationType: slot.precipitationType,
+        pm10: air.pm10,
+        pm25: air.pm25,
+        uvIndex: uvValue ?? estimateUvFallback(slot.skyCondition, slot.hour, slot.temperature),
+        windSpeed: slot.windSpeed
+      }
+    };
+  });
 }
 
-// 자외선 API 연동 전까지, 하늘 상태 + 시간대로 대략 추정하는 임시 fallback.
-// 공식 5단계: 낮음(0~2) / 보통(3~5) / 높음(6~7) / 매우높음(8~10) / 위험(11+)
-function estimateUvFallback(skyCondition, hour) {
-  // 야간(일출 전/일몰 후)에는 자외선 없음
+// 자외선 API 실패 시(또는 uvAreaNo 없을 시) 쓰는 fallback.
+function estimateUvFallback(skyCondition, hour, temperature) {
   if (hour !== undefined && (hour < 7 || hour >= 19)) {
     return 0;
   }
 
-  // 정오 전후(자외선이 가장 강한 시간대, 11~15시)는 한 단계 더 높게 추정
   const isPeakHour = hour !== undefined && hour >= 11 && hour <= 15;
 
-  // SKY: 맑음(1), 구름조금(3), 구름많음/흐림(4)
-  if (skyCondition === "1") return isPeakHour ? 9 : 6;   // 맑음: 매우높음 또는 높음
-  if (skyCondition === "3") return isPeakHour ? 6 : 4;   // 구름조금: 높음 또는 보통
-  return isPeakHour ? 4 : 2;                              // 구름많음/흐림: 보통 또는 낮음
+  let base;
+  if (skyCondition === "1") base = isPeakHour ? 9 : 6;
+  else if (skyCondition === "3") base = isPeakHour ? 6 : 4;
+  else base = isPeakHour ? 4 : 2;
+
+  if (temperature !== undefined && temperature >= 30 && isPeakHour) {
+    base = Math.max(base, 6);
+  }
+
+  return base;
 }
